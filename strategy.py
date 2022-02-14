@@ -4,7 +4,7 @@ import backtrader as bt
 from loguru import logger
 
 from utils import get_trend
-from utils.patterns import check_pattern_for_long, check_pattern_for_short
+from utils.patterns import check_pattern_for_long, check_pattern_for_short, check_high_above_ind, check_low_below_ind
 
 
 class TrendStrategy(bt.Strategy):
@@ -27,15 +27,27 @@ class TrendStrategy(bt.Strategy):
 
         # ===Инициализация аргументов===
 
+        # Разные временные интервалы
+        # По которому бегаем 1 мин
+        self.check_datas = self.datas[0]
+        # По которому работаем например 5 мин(сейчас тоже 1 мин)
+        self.work_datas = self.datas[1]
+
         # data
-        self.close = self.datas[0].close
-        self.high = self.datas[0].high
-        self.low = self.datas[0].low
+        self.close = self.work_datas.close
+        self.high = self.work_datas.high
+        self.low = self.work_datas.low
 
         # indicators
-        self.ma_trend = bt.ind.ExponentialMovingAverage(period=self.p.trend_period)  # type: ignore
-        self.ma_fast = bt.ind.ExponentialMovingAverage(period=self.p.fast_period)  # type: ignore
-        self.ma_slow = bt.ind.ExponentialMovingAverage(period=self.p.slow_period)  # type: ignore
+        self.ma_fast = bt.ind.ExponentialMovingAverage(
+            self.work_datas.close,  # type: ignore
+            period=self.p.fast_period,  # type: ignore
+        )
+
+        self.ma_slow = bt.ind.ExponentialMovingAverage(
+            self.work_datas.close,  # type: ignore
+            period=self.p.slow_period,  # type: ignore
+        )
 
         self.atr_ind = bt.ind.AverageTrueRange()
 
@@ -50,12 +62,12 @@ class TrendStrategy(bt.Strategy):
         self.buy_stop = None
         self.sell_stop = None
 
-        # Параметры для настройки
-        # Использовать Target
-        self.is_target = False
+        # Параметры для настройки:
+        # использовать Target
+        self.is_target = True
 
         # Количество баров для паттерна (отрицательное)
-        self.num_bars_pattern = -10
+        self.num_bars_pattern = -15
 
         # Количество баров для stop loss (отрицательное)
         self.num_bars_stoploss = -5
@@ -106,7 +118,7 @@ class TrendStrategy(bt.Strategy):
                         price=target_price,
                         oco=self.sell_stop,
                     )
-                    logger.info(f'Target sell: {self.sell_limit.price:.3f}')  # type: ignore
+                    logger.info(f'Target sell: {self.sell_limit.price}')  # type: ignore
 
         elif self.position.size < 0:
             logger.debug(f'Short position: {self.position.size}')
@@ -135,11 +147,15 @@ class TrendStrategy(bt.Strategy):
                         price=target_price,
                         oco=self.buy_stop,
                     )
-                    logger.info(f'Target buy: {self.buy_limit.price:.3f}')  # type: ignore
+                    logger.info(f'Target buy: {self.buy_limit.price}')  # type: ignore
 
         # Позиции нет
         else:
             logger.debug(f'Not position: {self.position.size}')
+            # Списки для паттернов
+            high_bars_list = [self.high[i] for i in range(0, self.num_bars_pattern, -1)]
+            low_bars_list = [self.low[i] for i in range(0, self.num_bars_pattern, -1)]
+            indicator_list = [self.ma_slow[i] for i in range(0, self.num_bars_pattern, -1)]
 
             if self.trend == 'Up':
                 # Отменяем возможно оставшиеся заявки от 'Down'
@@ -148,10 +164,10 @@ class TrendStrategy(bt.Strategy):
                 if self.sell_stop:
                     self.cancel(self.sell_stop)
 
-                data = [self.high[i] for i in range(0, self.num_bars_pattern, -1)]
-                pattern_price = check_pattern_for_long(data)
+                pattern_price = check_pattern_for_long(high_bars_list)
+                second_if = check_low_below_ind(low_bars_list, indicator_list)
 
-                if pattern_price:
+                if pattern_price and second_if:
                     self.open_or_improve_buy_stop(pattern_price)
                 else:
                     logger.debug('Not pattern')
@@ -163,10 +179,10 @@ class TrendStrategy(bt.Strategy):
                 if self.buy_stop:
                     self.cancel(self.buy_stop)
 
-                data = [self.low[i] for i in range(0, self.num_bars_pattern, -1)]
-                pattern_price = check_pattern_for_short(data)
+                pattern_price = check_pattern_for_short(low_bars_list)
+                second_if = check_high_above_ind(high_bars_list, indicator_list)
 
-                if pattern_price:
+                if pattern_price and second_if:
                     self.open_or_improve_sell_stop(pattern_price)
                 else:
                     logger.debug('Not pattern')
@@ -252,7 +268,7 @@ class TrendStrategy(bt.Strategy):
             price_order (float): price order
         """
         self.buy_stop = self.buy(exectype=bt.Order.Stop, price=price_order)
-        logger.info(f'Buy Stop: {self.buy_stop.price:.3f}')  # type: ignore
+        logger.info(f'Buy Stop: {self.buy_stop.price}')  # type: ignore
 
     def _sell_stop_order(self, price_order: float):
         """Выставляет Stop на продажу.
@@ -261,7 +277,7 @@ class TrendStrategy(bt.Strategy):
             price_order (float): price order
         """
         self.sell_stop = self.sell(exectype=bt.Order.Stop, price=price_order)
-        logger.info(f'Sell Stop: {self.sell_stop.price:.3f}')  # type: ignore
+        logger.info(f'Sell Stop: {self.sell_stop.price}')  # type: ignore
 
     def _sleep_is_targets(self):
         """Sleep если is_target = True."""

@@ -1,6 +1,6 @@
 import pytest
 from utils import get_trend
-from utils.patterns import check_pattern_for_short, check_pattern_for_long
+from utils.patterns import check_pattern_for_short, check_pattern_for_long, check_high_above_ind, check_low_below_ind
 
 
 def test_test():
@@ -44,3 +44,25 @@ data_short_patterns = [
 @pytest.mark.parametrize("data,expected", data_short_patterns)
 def test_check_pattern_for_short(data, expected):
     assert check_pattern_for_short(data) == expected
+
+
+data_check_high_above_ind = [
+    ((1, 3, 3), (1, 2, 3), True),
+    ((1, 2, 3), (1, 2, 3), False),
+]
+
+
+@pytest.mark.parametrize("high_bars_list,indicator_list,expected", data_check_high_above_ind)
+def test_check_high_above_ind(high_bars_list, indicator_list, expected):
+    assert check_high_above_ind(high_bars_list, indicator_list) == expected
+
+
+data_check_low_below_ind = [
+    ((1, 1, 3), (1, 2, 3), True),
+    ((1, 2, 3), (1, 2, 3), False),
+]
+
+
+@pytest.mark.parametrize("low_bars_list,indicator_list,expected", data_check_low_below_ind)
+def test_check_low_below_ind(low_bars_list, indicator_list, expected):
+    assert check_low_below_ind(low_bars_list, indicator_list) == expected

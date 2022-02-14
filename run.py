@@ -11,7 +11,7 @@ if __name__ == "__main__":
     # Инструмент
     symbol = 'SPBFUT.SiH2'
     # Time Frame
-    compression_data = 1
+    compression_data_work = 1  # MARK: Time Frame по которому работаем(проводим все расчеты)
 
     # Параметры счета
     client_code = config.CLIENTCODE
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     trade_account_id = config.TRADEACCOUNTID
 
     # Сервисные функции для визуализации подключения и параметров счета.
-    appruve_server(symbol, compression_data)
+    appruve_server(symbol, compression_data_work)
     print_connection()
     print_account_money(trade_account_id, firm_id)
 
@@ -33,15 +33,15 @@ if __name__ == "__main__":
         FirmId=firm_id,
         TradeAccountId=trade_account_id,
         IsFutures=True,
-        use_positions=False  # True не будет если открыты другие позиции кроме тикера symbol
+        use_positions=False  # True не будет если открыты другие позиции кроме тикера symbol(Опционы например)
     )
     cerebro.setbroker(broker)
 
     data = store.getdata(
         dataname=symbol,
         timeframe=bt.TimeFrame.Minutes,  # type: ignore
-        compression=compression_data,
-        fromdate=datetime(2021, 10, 1, 10, 00),
+        compression=1,  # MARK: Time Frame по которому бегаем
+        fromdate=datetime(2021, 10, 1, 7, 00),
         LiveBars=True
     )
     cerebro.addsizer(
@@ -49,5 +49,12 @@ if __name__ == "__main__":
         bt.sizers.FixedSize,
         stake=1000
     )
+    # Берем два временных интервала, по первому(младшему) бегает и проверяет ежеминутно
+    # По второму (cerebro.resampledata) ведутся расчеты и сама торговля
     cerebro.adddata(data)
+    cerebro.resampledata(
+        data,
+        timeframe=bt.TimeFrame.Minutes,  # type: ignore
+        compression=compression_data_work  # MARK: Time Frame по которому работаем
+    )
     cerebro.run()
