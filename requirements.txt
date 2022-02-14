@@ -1,0 +1,11 @@
+backtrader==1.9.76.123
+pytz==2021.3
+
+environs==9.4.0
+loguru==0.5.3
+
+pytest==6.2.5
+
+flake8
+flake8-builtins
+flake8-commas
