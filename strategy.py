@@ -8,11 +8,7 @@ from utils.patterns import check_pattern_for_long, check_pattern_for_short, chec
 
 
 class TrendStrategy(bt.Strategy):
-    """Описание стратегии.
-
-    Открывает позиции, закрывает.
-
-    """
+    """Описание стратегии."""
 
     params = dict(
         trend_period=100,
@@ -67,7 +63,7 @@ class TrendStrategy(bt.Strategy):
         self.is_target = True
 
         # Количество баров для паттерна (отрицательное)
-        self.num_bars_pattern = -15
+        self.num_bars_pattern = -10
 
         # Количество баров для stop loss (отрицательное)
         self.num_bars_stoploss = -5
@@ -82,7 +78,7 @@ class TrendStrategy(bt.Strategy):
 
         # ===Основной блок с логикой==========================================
         # защита от множества заявок в секунду, после теста можно удалить
-        time.sleep(1)
+        # time.sleep(1)
         logger.info('<<< New next >>>')
 
         # Определяем тренд Up/Down/Not

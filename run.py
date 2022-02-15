@@ -41,7 +41,7 @@ if __name__ == "__main__":
         dataname=symbol,
         timeframe=bt.TimeFrame.Minutes,  # type: ignore
         compression=1,  # MARK: Time Frame по которому бегаем
-        fromdate=datetime(2021, 10, 1, 7, 00),
+        fromdate=datetime(2022, 2, 1, 7, 00),
         LiveBars=True
     )
     cerebro.addsizer(
