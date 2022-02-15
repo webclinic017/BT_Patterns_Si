@@ -76,6 +76,18 @@ class TrendStrategy(bt.Strategy):
         if not self.isLive:  # Важно
             return
 
+        if self.buy_limit and self.buy_limit.status == bt.Order.Submitted:
+            return
+
+        if self.sell_limit and self.sell_limit.status == bt.Order.Submitted:
+            return
+
+        if self.buy_stop and self.buy_stop.status == bt.Order.Submitted:
+            return
+
+        if self.sell_stop and self.sell_stop.status == bt.Order.Submitted:
+            return
+
         # ===Основной блок с логикой==========================================
         # защита от множества заявок в секунду, после теста можно удалить
         # time.sleep(1)
@@ -109,6 +121,7 @@ class TrendStrategy(bt.Strategy):
                 # а значит ОСО снимет self.sell_limit
                 if not self.sell_limit or not self.sell_limit.alive():
                     target_price = self.buy_stop.price + self.atr_ind[0]  # type: ignore
+                    target_price = round(target_price, 3)
                     self.sell_limit = self.sell(
                         exectype=bt.Order.Limit,
                         price=target_price,
@@ -138,6 +151,7 @@ class TrendStrategy(bt.Strategy):
                 # а значит ОСО снимет self.buy_limit
                 if not self.buy_limit or not self.buy_limit.alive():
                     target_price = self.sell_stop.price - self.atr_ind[0]  # type: ignore
+                    target_price = round(target_price, 3)
                     self.buy_limit = self.buy(
                         exectype=bt.Order.Limit,
                         price=target_price,
