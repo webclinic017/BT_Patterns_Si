@@ -60,7 +60,7 @@ class TrendStrategy(bt.Strategy):
 
         # Параметры для настройки:
         # использовать Target
-        self.is_target = True
+        self.is_target = False
 
         # Количество баров для паттерна (отрицательное)
         self.num_bars_pattern = -10
@@ -274,18 +274,28 @@ class TrendStrategy(bt.Strategy):
     def _buy_stop_order(self, price_order: float):
         """Выставляет Stop на покупку.
 
+        Выставляет Buy Stop Limit на 0.002 выше полученной цены.
+        Округляет до 3 знаков после запятой.
+
         Args:
             price_order (float): price order
         """
+        price_order = price_order + 0.002
+        price_order = round(price_order, 3)
         self.buy_stop = self.buy(exectype=bt.Order.Stop, price=price_order)
         logger.info(f'Buy Stop: {self.buy_stop.price}')  # type: ignore
 
     def _sell_stop_order(self, price_order: float):
         """Выставляет Stop на продажу.
 
+        Выставляет Sell Stop Limit на продажу на 0.002 ниже полученной цены.
+        Округляет до 3 знаков после запятой.
+
         Args:
             price_order (float): price order
         """
+        price_order = price_order - 0.002
+        price_order = round(price_order, 3)
         self.sell_stop = self.sell(exectype=bt.Order.Stop, price=price_order)
         logger.info(f'Sell Stop: {self.sell_stop.price}')  # type: ignore
 
