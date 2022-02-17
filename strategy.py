@@ -60,13 +60,16 @@ class TrendStrategy(bt.Strategy):
 
         # Параметры для настройки:
         # использовать Target
-        self.is_target = False
+        self.is_target = True
 
         # Количество баров для паттерна (отрицательное)
         self.num_bars_pattern = -10
 
         # Количество баров для stop loss (отрицательное)
         self.num_bars_stoploss = -5
+
+        # Количество баров для second if (отрицательное)
+        self.num_bars_second_if = -5
 
         # ===Конец блока инициализации========================================
 
@@ -105,12 +108,7 @@ class TrendStrategy(bt.Strategy):
             # Stop
             # При открытии позиции вблизи или чуть за slow изменим stop
             # минимум за 5 баров (?может - ATR)
-            low_list = [self.low[i] for i in range(0, self.num_bars_stoploss, -1)]
-            min_bars = min(low_list)
-            if self.ma_slow[0] < min_bars:
-                stop_price = self.ma_slow[0]
-            else:
-                stop_price = min_bars
+            stop_price = self.get_stop_price_for_long()
 
             self.open_or_improve_sell_stop(stop_price)  # self.sell_stop
 
@@ -135,12 +133,7 @@ class TrendStrategy(bt.Strategy):
             # Stop
             # При открытии позиции вблизи или чуть за slow изменим stop
             # max за 5 баров (?может + ATR)
-            high_list = [self.high[i] for i in range(0, self.num_bars_stoploss, -1)]
-            max_bars = max(high_list)
-            if self.ma_slow[0] > max_bars:
-                stop_price = self.ma_slow[0]
-            else:
-                stop_price = max_bars
+            stop_price = self.get_stop_price_for_short()
 
             self.open_or_improve_buy_stop(stop_price)  # self.buy_stop
 
@@ -162,10 +155,9 @@ class TrendStrategy(bt.Strategy):
         # Позиции нет
         else:
             logger.debug(f'Not position: {self.position.size}')
-            # Списки для паттернов
-            high_bars_list = [self.high[i] for i in range(0, self.num_bars_pattern, -1)]
-            low_bars_list = [self.low[i] for i in range(0, self.num_bars_pattern, -1)]
-            indicator_list = [self.ma_slow[i] for i in range(0, self.num_bars_pattern, -1)]
+
+            # Список для второго условия входа(прокол индикатора)
+            indicator_list = [self.ma_fast[i] for i in range(0, self.num_bars_pattern, -1)]
 
             if self.trend == 'Up':
                 # Отменяем возможно оставшиеся заявки от 'Down'
@@ -174,8 +166,12 @@ class TrendStrategy(bt.Strategy):
                 if self.sell_stop:
                     self.cancel(self.sell_stop)
 
+                # Список для паттерна
+                high_bars_list = [self.high[i] for i in range(0, self.num_bars_pattern, -1)]
                 pattern_price = check_pattern_for_long(high_bars_list)
-                second_if = check_low_below_ind(low_bars_list, indicator_list)
+                # Список для стопа
+                low_for_stop_list = [self.low[i] for i in range(0, self.num_bars_second_if, -1)]
+                second_if = check_low_below_ind(low_for_stop_list, indicator_list)
 
                 if pattern_price and second_if:
                     self.open_or_improve_buy_stop(pattern_price)
@@ -189,8 +185,12 @@ class TrendStrategy(bt.Strategy):
                 if self.buy_stop:
                     self.cancel(self.buy_stop)
 
+                # Список для паттерна
+                low_bars_list = [self.low[i] for i in range(0, self.num_bars_pattern, -1)]
                 pattern_price = check_pattern_for_short(low_bars_list)
-                second_if = check_high_above_ind(high_bars_list, indicator_list)
+                # Список для стопа
+                high_for_stop_list = [self.high[i] for i in range(0, self.num_bars_second_if, -1)]
+                second_if = check_high_above_ind(high_for_stop_list, indicator_list)
 
                 if pattern_price and second_if:
                     self.open_or_improve_sell_stop(pattern_price)
@@ -198,6 +198,42 @@ class TrendStrategy(bt.Strategy):
                     logger.debug('Not pattern')
 
     # ===Вспомогательные функции стратегии====================================
+
+    def get_stop_price_for_long(self) -> float:
+        """Возвращает цену Stop loss for long.
+
+        Создает список из заданного количества low баров.
+        Сравнивает min списка со значением индикатора(ma)
+        Возвращает min значение как stop_price.
+
+        Returns:
+            stop_price (float): Значение Stop loss for long.
+        """
+        low_list = [self.low[i] for i in range(0, self.num_bars_stoploss, -1)]
+        min_bars = min(low_list)
+        if self.ma_slow[0] < min_bars:
+            stop_price = self.ma_slow[0]
+        else:
+            stop_price = min_bars
+        return stop_price
+
+    def get_stop_price_for_short(self):
+        """Возвращает цену Stop loss for short.
+
+        Создает список из заданного количества high баров.
+        Сравнивает max списка со значением индикатора(ma)
+        Возвращает max значение как stop_price.
+
+        Returns:
+            stop_price (float): Значение Stop loss for short.
+        """
+        high_list = [self.high[i] for i in range(0, self.num_bars_stoploss, -1)]
+        max_bars = max(high_list)
+        if self.ma_slow[0] > max_bars:
+            stop_price = self.ma_slow[0]
+        else:
+            stop_price = max_bars
+        return stop_price
 
     # ===Функции выставления заявок===========================================
 
@@ -212,6 +248,10 @@ class TrendStrategy(bt.Strategy):
         Args:
             price_order (float): цена заявки
         """
+        # Sell Stop Limit на 0.002 ниже полученной цены, округляет до 3 знаков после запятой.
+        price_order = price_order - 0.002
+        price_order = round(price_order, 3)
+
         # Если ордера вообще еще не было
         if not self.sell_stop:
             self._sell_stop_order(price_order)
@@ -219,7 +259,7 @@ class TrendStrategy(bt.Strategy):
             return
 
         # Если ордер есть, проверяем условия улучшать или нет
-        elif self.sell_stop.alive():
+        elif self.sell_stop and self.sell_stop.status == bt.Order.Accepted:
             if self.sell_stop.price < price_order:
                 self.cancel(self.sell_stop)
 
@@ -247,6 +287,10 @@ class TrendStrategy(bt.Strategy):
         Args:
             price_order (float): цена заявки
         """
+        # Buy Stop Limit на 0.002 выше полученной цены, округляет до 3 знаков после запятой.
+        price_order = price_order + 0.002
+        price_order = round(price_order, 3)
+
         # Если ордера вообще еще не было
         if not self.buy_stop:
             self._buy_stop_order(price_order)
@@ -254,7 +298,7 @@ class TrendStrategy(bt.Strategy):
             return
 
         # Если ордер есть, проверяем условия улучшать или нет
-        elif self.buy_stop.alive():
+        elif self.buy_stop and self.buy_stop.status == bt.Order.Accepted:
             if self.buy_stop.price > price_order:
                 self.cancel(self.buy_stop)
 
@@ -274,13 +318,12 @@ class TrendStrategy(bt.Strategy):
     def _buy_stop_order(self, price_order: float):
         """Выставляет Stop на покупку.
 
-        Выставляет Buy Stop Limit на 0.002 выше полученной цены.
+        Выставляет Buy Stop Limit.
         Округляет до 3 знаков после запятой.
 
         Args:
             price_order (float): price order
         """
-        price_order = price_order + 0.002
         price_order = round(price_order, 3)
         self.buy_stop = self.buy(exectype=bt.Order.Stop, price=price_order)
         logger.info(f'Buy Stop: {self.buy_stop.price}')  # type: ignore
@@ -288,13 +331,12 @@ class TrendStrategy(bt.Strategy):
     def _sell_stop_order(self, price_order: float):
         """Выставляет Stop на продажу.
 
-        Выставляет Sell Stop Limit на продажу на 0.002 ниже полученной цены.
+        Выставляет Sell Stop Limit.
         Округляет до 3 знаков после запятой.
 
         Args:
             price_order (float): price order
         """
-        price_order = price_order - 0.002
         price_order = round(price_order, 3)
         self.sell_stop = self.sell(exectype=bt.Order.Stop, price=price_order)
         logger.info(f'Sell Stop: {self.sell_stop.price}')  # type: ignore
