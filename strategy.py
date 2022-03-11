@@ -98,6 +98,9 @@ class TrendStrategy(bt.Strategy):
 
         # Определяем тренд Up/Down/Not
         self.trend = get_trend(self.ma_fast[0], self.ma_slow[0])
+        # Устанавливаем параметр ATR
+        atr_for_all = self.atr_ind[0] * 1.5
+        atr_for_all = round(atr_for_all, 3)
 
         # Определяем есть ли позиция.
         # Если позиция есть: Выставляем или пробуем улучшить стоп.
@@ -118,7 +121,7 @@ class TrendStrategy(bt.Strategy):
                 # Будет выставляться только если self.sell_stop изменится,
                 # а значит ОСО снимет self.sell_limit
                 if not self.sell_limit or not self.sell_limit.alive():
-                    target_price = self.buy_stop.price + self.atr_ind[0]  # type: ignore
+                    target_price = self.buy_stop.price + atr_for_all  # type: ignore
                     target_price = round(target_price, 3)
                     self.sell_limit = self.sell(
                         exectype=bt.Order.Limit,
@@ -143,7 +146,7 @@ class TrendStrategy(bt.Strategy):
                 # Будет выставляться только если self.buy_stop изменится,
                 # а значит ОСО снимет self.buy_limit
                 if not self.buy_limit or not self.buy_limit.alive():
-                    target_price = self.sell_stop.price - self.atr_ind[0]  # type: ignore
+                    target_price = self.sell_stop.price - atr_for_all  # type: ignore
                     target_price = round(target_price, 3)
                     self.buy_limit = self.buy(
                         exectype=bt.Order.Limit,
@@ -174,9 +177,19 @@ class TrendStrategy(bt.Strategy):
                 second_if = check_low_below_ind(low_for_stop_list, indicator_list)
 
                 if pattern_price and second_if:
-                    self.open_or_improve_buy_stop(pattern_price)
+                    # Если соблюдены условия на вход проверим profit/loss
+                    # Target должен быть больше stop loss
+                    stop_price = self.get_stop_price_for_long()
+                    price_stop_permission = self.check_price_stop_permission(stop_price, pattern_price, atr_for_all)
+                    # Если есть permission выставляем заявку, если нет отменяем если была
+                    if price_stop_permission:
+                        self.open_or_improve_buy_stop(pattern_price)
+                    else:
+                        if self.buy_stop:
+                            self.cancel(self.buy_stop)
                 else:
-                    logger.debug('Not pattern')
+                    logger.debug(f'pattern_price: {pattern_price}')
+                    logger.debug(f'second_if: {second_if}')
 
             elif self.trend == 'Down':
                 # Отменяем возможно оставшиеся заявки от 'Up'
@@ -193,11 +206,47 @@ class TrendStrategy(bt.Strategy):
                 second_if = check_high_above_ind(high_for_stop_list, indicator_list)
 
                 if pattern_price and second_if:
-                    self.open_or_improve_sell_stop(pattern_price)
+                    # Если соблюдены условия на вход проверим profit/loss
+                    # Target должен быть больше stop loss
+                    stop_price = self.get_stop_price_for_short()
+                    price_stop_permission = self.check_price_stop_permission(stop_price, pattern_price, atr_for_all)
+                    # Если есть permission выставляем заявку, если нет отменяем если была
+                    if price_stop_permission:
+                        self.open_or_improve_sell_stop(pattern_price)
+                    else:
+                        if self.sell_stop:
+                            self.cancel(self.sell_stop)
                 else:
-                    logger.debug('Not pattern')
+                    logger.debug(f'pattern_price: {pattern_price}')
+                    logger.debug(f'second_if: {second_if}')
 
     # ===Вспомогательные функции стратегии====================================
+
+    def check_price_stop_permission(self, stop_price: float, pattern_price: float, atr_for_all: float) -> bool:
+        """Разрешает открытие позиции при profit больше loss.
+
+        Сравнивает разницу ценой открытия и ценой стопа по модулю с ценой atr(он target).
+        Если разница меньше(Stop меньше Target): True
+
+        Args:
+            stop_price (float): Предполагаемый Stop loss позиции
+            pattern_price (float): Предполагаемая цена открытия позиции
+            atr_for_all (float): Среднее значение отклонения цены за период
+
+        Returns:
+            bool
+        """
+        delta = abs(stop_price-pattern_price)
+        delta = round(delta, 3)
+        pl = atr_for_all / delta
+        pl = round(pl, 2)
+        if delta <= atr_for_all:
+            logger.debug(f'Permission is Ok. {pl}')
+            return True
+        else:
+            logger.debug(f'delta:{delta} > atr:{atr_for_all}, pl:{pl}')
+            logger.debug('Not permission.')
+            return False
 
     def get_stop_price_for_long(self) -> float:
         """Возвращает цену Stop loss for long.
@@ -211,11 +260,7 @@ class TrendStrategy(bt.Strategy):
         """
         low_list = [self.low[i] for i in range(0, self.num_bars_stoploss, -1)]
         min_bars = min(low_list)
-        if self.ma_slow[0] < min_bars:
-            stop_price = self.ma_slow[0]
-        else:
-            stop_price = min_bars
-        return stop_price
+        return min_bars if min_bars < self.ma_slow[0] else self.ma_slow[0]
 
     def get_stop_price_for_short(self):
         """Возвращает цену Stop loss for short.
@@ -229,11 +274,7 @@ class TrendStrategy(bt.Strategy):
         """
         high_list = [self.high[i] for i in range(0, self.num_bars_stoploss, -1)]
         max_bars = max(high_list)
-        if self.ma_slow[0] > max_bars:
-            stop_price = self.ma_slow[0]
-        else:
-            stop_price = max_bars
-        return stop_price
+        return max_bars if max_bars > self.ma_slow[0] else self.ma_slow[0]
 
     # ===Функции выставления заявок===========================================
 
